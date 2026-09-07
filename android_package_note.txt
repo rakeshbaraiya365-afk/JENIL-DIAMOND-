@@ -1,0 +1,1 @@
+Set the Android applicationId/namespace to com.jenildiamond.app in the Android Gradle configuration when creating the standard Flutter android folder, or run `flutter create .` inside this project before opening/building it.
