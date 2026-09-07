@@ -242,12 +242,21 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'JENIL DIAMOND',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        title: Row(
+  children: [
+    Image.asset(
+      'assets/logo .png',
+      height: 40,
+    ),
+    const SizedBox(width: 10),
+    const Text(
+      'JENIL DIAMOND',
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  ],
+),
         centerTitle: true,
       ),
       body: pages[selectedIndex],
