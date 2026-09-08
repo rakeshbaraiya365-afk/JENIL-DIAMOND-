@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:telephony/telephony.dart';
+
 import 'main.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -16,6 +18,8 @@ class CalendarPage extends StatefulWidget {
 
 class _CalendarPageState extends State<CalendarPage> {
   DateTime selectedDate = DateTime(2026, 1, 1);
+
+  final Telephony telephony = Telephony.instance;
 
   String get dateText {
     return DateFormat('dd-MM-yyyy').format(selectedDate);
@@ -55,7 +59,9 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   void previousMonth() {
-    if (selectedDate.month == 1) return;
+    if (selectedDate.month == 1) {
+      return;
+    }
 
     setState(() {
       selectedDate = DateTime(
@@ -67,7 +73,9 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   void nextMonth() {
-    if (selectedDate.month == 12) return;
+    if (selectedDate.month == 12) {
+      return;
+    }
 
     setState(() {
       selectedDate = DateTime(
@@ -78,9 +86,68 @@ class _CalendarPageState extends State<CalendarPage> {
     });
   }
 
-  // ==================================================
+  // ======================================================
+  // AUTOMATIC SMS
+  // ======================================================
+
+  Future<void> sendAutomaticSms({
+    required Worker worker,
+    required DateTime date,
+    required double quantity,
+    required double rate,
+    required double total,
+  }) async {
+    if (worker.mobile.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final permission =
+          await telephony.requestSmsPermissions;
+
+      if (permission != true) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'SMS permission આપવામાં આવી નથી. કામ સેવ થઈ ગયું છે.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      final message =
+          'JENIL DIAMOND\n'
+          'કારીગર: ${worker.name}\n'
+          'તારીખ: ${DateFormat('dd-MM-yyyy').format(date)}\n'
+          'જથ્થો: ${quantity.toStringAsFixed(2)}\n'
+          'દર: ₹${rate.toStringAsFixed(2)}\n'
+          'કુલ કામ: ₹${total.toStringAsFixed(2)}';
+
+      await telephony.sendSms(
+        to: worker.mobile.trim(),
+        message: message,
+        isMultipart: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'કામ સેવ થઈ ગયું છે, પરંતુ SMS મોકલી શકાયો નથી.',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ======================================================
   // WORK ADD
-  // ==================================================
+  // ======================================================
 
   Future<void> addWork() async {
     if (AppData.workers.isEmpty) {
@@ -92,7 +159,7 @@ class _CalendarPageState extends State<CalendarPage> {
       return;
     }
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<WorkEntry>(
       context: context,
       barrierDismissible: false,
       builder: (_) {
@@ -102,21 +169,53 @@ class _CalendarPageState extends State<CalendarPage> {
       },
     );
 
-    if (result == true && mounted) {
-      setState(() {});
-      widget.onRefresh();
+    if (result == null || !mounted) {
+      return;
+    }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('કામ સફળતાપૂર્વક સેવ થયું'),
-        ),
+    // Dialog બંધ થયા પછી data save
+    AppData.works.add(result);
+    AppData.recalculate();
+    await AppData.save();
+
+    // Worker શોધો
+    Worker? worker;
+
+    for (final item in AppData.workers) {
+      if (item.name == result.worker) {
+        worker = item;
+        break;
+      }
+    }
+
+    // Automatic SMS
+    if (worker != null) {
+      await sendAutomaticSms(
+        worker: worker,
+        date: result.date,
+        quantity: result.quantity,
+        rate: result.rate,
+        total: result.total,
       );
     }
+
+    if (!mounted) return;
+
+    setState(() {});
+    widget.onRefresh();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'કામ સફળતાપૂર્વક સેવ થયું અને SMS મોકલવાની પ્રક્રિયા થઈ.',
+        ),
+      ),
+    );
   }
 
-  // ==================================================
+  // ======================================================
   // PAYMENT ADD
-  // ==================================================
+  // ======================================================
 
   Future<void> addPayment() async {
     if (AppData.workers.isEmpty) {
@@ -128,7 +227,7 @@ class _CalendarPageState extends State<CalendarPage> {
       return;
     }
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<Payment>(
       context: context,
       barrierDismissible: false,
       builder: (_) {
@@ -138,21 +237,32 @@ class _CalendarPageState extends State<CalendarPage> {
       },
     );
 
-    if (result == true && mounted) {
-      setState(() {});
-      widget.onRefresh();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ઉપાડ સફળતાપૂર્વક સેવ થયો'),
-        ),
-      );
+    if (result == null || !mounted) {
+      return;
     }
+
+    // Dialog બંધ થયા પછી payment save
+    AppData.payments.add(result);
+    AppData.recalculate();
+    await AppData.save();
+
+    if (!mounted) return;
+
+    setState(() {});
+    widget.onRefresh();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'ઉપાડ સફળતાપૂર્વક સેવ થયો',
+        ),
+      ),
+    );
   }
 
-  // ==================================================
+  // ======================================================
   // BUILD
-  // ==================================================
+  // ======================================================
 
   @override
   Widget build(BuildContext context) {
@@ -175,10 +285,14 @@ class _CalendarPageState extends State<CalendarPage> {
 
     final List<Widget> cells = [];
 
+    // Empty cells
     for (int i = 1; i < firstWeekday; i++) {
-      cells.add(const SizedBox());
+      cells.add(
+        const SizedBox(),
+      );
     }
 
+    // Calendar days
     for (int day = 1; day <= daysInMonth; day++) {
       final date = DateTime(
         selectedDate.year,
@@ -232,8 +346,9 @@ class _CalendarPageState extends State<CalendarPage> {
                 ),
                 if (exists)
                   Container(
-                    margin:
-                        const EdgeInsets.only(top: 4),
+                    margin: const EdgeInsets.only(
+                      top: 4,
+                    ),
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
@@ -265,7 +380,10 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 12),
 
+          // ==================================================
           // CALENDAR
+          // ==================================================
+
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -327,7 +445,10 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 15),
 
+          // ==================================================
           // SELECTED DATE
+          // ==================================================
+
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -354,7 +475,10 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 12),
 
+          // ==================================================
           // BUTTONS
+          // ==================================================
+
           Row(
             children: [
               Expanded(
@@ -377,7 +501,10 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 20),
 
+          // ==================================================
           // WORK HISTORY
+          // ==================================================
+
           const Text(
             'આ તારીખનું કામ',
             style: TextStyle(
@@ -422,7 +549,10 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 15),
 
+          // ==================================================
           // PAYMENT HISTORY
+          // ==================================================
+
           const Text(
             'આ તારીખનો ઉપાડ',
             style: TextStyle(
@@ -488,8 +618,7 @@ class AddWorkDialog extends StatefulWidget {
       _AddWorkDialogState();
 }
 
-class _AddWorkDialogState
-    extends State<AddWorkDialog> {
+class _AddWorkDialogState extends State<AddWorkDialog> {
   int selectedWorkerIndex = 0;
 
   final quantityController =
@@ -507,7 +636,11 @@ class _AddWorkDialogState
     super.dispose();
   }
 
-  Future<void> saveWork() async {
+  // ======================================================
+  // SAVE WORK
+  // ======================================================
+
+  void saveWork() {
     final quantity =
         double.tryParse(
               quantityController.text.trim(),
@@ -530,7 +663,8 @@ class _AddWorkDialogState
 
     if (AppData.workers.isEmpty) {
       setState(() {
-        error = 'પહેલા કારીગર ઉમેરો';
+        error =
+            'પહેલા કારીગર ઉમેરો';
       });
       return;
     }
@@ -538,22 +672,16 @@ class _AddWorkDialogState
     final worker =
         AppData.workers[selectedWorkerIndex];
 
-    AppData.works.add(
-      WorkEntry(
-        worker: worker.name,
-        date: widget.date,
-        quantity: quantity,
-        rate: rate,
-      ),
+    final entry = WorkEntry(
+      worker: worker.name,
+      date: widget.date,
+      quantity: quantity,
+      rate: rate,
     );
 
-    AppData.recalculate();
-
-    await AppData.save();
-
-    if (!mounted) return;
-
-    Navigator.of(context).pop(true);
+    // ફક્ત result પાછું આપવું.
+    // Actual save parent dialog બંધ થયા પછી કરશે.
+    Navigator.of(context).pop(entry);
   }
 
   @override
@@ -574,13 +702,18 @@ class _AddWorkDialogState
 
     return AlertDialog(
       title: Text(
-        'કામ ઉમેરો\n${DateFormat('dd-MM-yyyy').format(widget.date)}',
+        'કામ ઉમેરો\n'
+        '${DateFormat('dd-MM-yyyy').format(widget.date)}',
       ),
+
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // ==================================================
             // WORKER SELECT
+            // ==================================================
+
             InkWell(
               onTap: () async {
                 final index =
@@ -634,8 +767,10 @@ class _AddWorkDialogState
                   });
                 }
               },
+
               borderRadius:
                   BorderRadius.circular(8),
+
               child: InputDecorator(
                 decoration:
                     const InputDecoration(
@@ -656,6 +791,10 @@ class _AddWorkDialogState
 
             const SizedBox(height: 12),
 
+            // ==================================================
+            // QUANTITY
+            // ==================================================
+
             TextField(
               controller: quantityController,
               keyboardType:
@@ -674,6 +813,10 @@ class _AddWorkDialogState
             ),
 
             const SizedBox(height: 12),
+
+            // ==================================================
+            // RATE
+            // ==================================================
 
             TextField(
               controller: rateController,
@@ -694,6 +837,10 @@ class _AddWorkDialogState
             ),
 
             const SizedBox(height: 15),
+
+            // ==================================================
+            // TOTAL
+            // ==================================================
 
             Text(
               'કુલ: ₹${total.toStringAsFixed(2)}',
@@ -716,13 +863,15 @@ class _AddWorkDialogState
           ],
         ),
       ),
+
       actions: [
         TextButton(
           onPressed: () {
-            Navigator.of(context).pop(false);
+            Navigator.of(context).pop();
           },
           child: const Text('રદ કરો'),
         ),
+
         FilledButton(
           onPressed: saveWork,
           child: const Text('સેવ કરો'),
@@ -764,7 +913,11 @@ class _AddPaymentDialogState
     super.dispose();
   }
 
-  Future<void> savePayment() async {
+  // ======================================================
+  // SAVE PAYMENT
+  // ======================================================
+
+  void savePayment() {
     final amount =
         double.tryParse(
               amountController.text.trim(),
@@ -781,7 +934,8 @@ class _AddPaymentDialogState
 
     if (AppData.workers.isEmpty) {
       setState(() {
-        error = 'પહેલા કારીગર ઉમેરો';
+        error =
+            'પહેલા કારીગર ઉમેરો';
       });
       return;
     }
@@ -789,33 +943,31 @@ class _AddPaymentDialogState
     final worker =
         AppData.workers[selectedWorkerIndex];
 
-    AppData.payments.add(
-      Payment(
-        worker: worker.name,
-        date: widget.date,
-        amount: amount,
-      ),
+    final payment = Payment(
+      worker: worker.name,
+      date: widget.date,
+      amount: amount,
     );
 
-    AppData.recalculate();
-
-    await AppData.save();
-
-    if (!mounted) return;
-
-    Navigator.of(context).pop(true);
+    // Actual save dialog બંધ થયા પછી થશે.
+    Navigator.of(context).pop(payment);
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(
-        'ઉપાડ ઉમેરો\n${DateFormat('dd-MM-yyyy').format(widget.date)}',
+        'ઉપાડ ઉમેરો\n'
+        '${DateFormat('dd-MM-yyyy').format(widget.date)}',
       ),
+
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ==================================================
           // WORKER SELECT
+          // ==================================================
+
           InkWell(
             onTap: () async {
               final index =
@@ -869,8 +1021,10 @@ class _AddPaymentDialogState
                 });
               }
             },
+
             borderRadius:
                 BorderRadius.circular(8),
+
             child: InputDecorator(
               decoration:
                   const InputDecoration(
@@ -890,6 +1044,10 @@ class _AddPaymentDialogState
           ),
 
           const SizedBox(height: 12),
+
+          // ==================================================
+          // AMOUNT
+          // ==================================================
 
           TextField(
             controller: amountController,
@@ -918,13 +1076,15 @@ class _AddPaymentDialogState
           ],
         ],
       ),
+
       actions: [
         TextButton(
           onPressed: () {
-            Navigator.of(context).pop(false);
+            Navigator.of(context).pop();
           },
           child: const Text('રદ કરો'),
         ),
+
         FilledButton(
           onPressed: savePayment,
           child: const Text('સેવ કરો'),
@@ -941,7 +1101,10 @@ class _AddPaymentDialogState
 class WeekDay extends StatelessWidget {
   final String text;
 
-  const WeekDay(this.text, {super.key});
+  const WeekDay(
+    this.text, {
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
