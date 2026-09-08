@@ -21,23 +21,32 @@ class _CalendarPageState extends State<CalendarPage> {
     return DateFormat('dd-MM-yyyy').format(selectedDate);
   }
 
+  // Check whether two dates are the same day.
+  bool isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year &&
+        a.month == b.month &&
+        a.day == b.day;
+  }
+
   List<WorkEntry> get selectedWorks {
     return AppData.works
-        .where((work) => work.date == selectedDateString)
+        .where((work) => isSameDay(work.date, selectedDate))
         .toList();
   }
 
   List<Payment> get selectedPayments {
     return AppData.payments
-        .where((payment) => payment.date == selectedDateString)
+        .where((payment) => isSameDay(payment.date, selectedDate))
         .toList();
   }
 
   bool hasEntry(DateTime date) {
-    final dateString = DateFormat('dd-MM-yyyy').format(date);
-
-    return AppData.works.any((work) => work.date == dateString) ||
-        AppData.payments.any((payment) => payment.date == dateString);
+    return AppData.works.any(
+          (work) => isSameDay(work.date, date),
+        ) ||
+        AppData.payments.any(
+          (payment) => isSameDay(payment.date, date),
+        );
   }
 
   void selectDate(DateTime date) {
@@ -126,7 +135,9 @@ class _CalendarPageState extends State<CalendarPage> {
                         }
                       },
                     ),
+
                     const SizedBox(height: 12),
+
                     TextField(
                       controller: quantityController,
                       keyboardType:
@@ -141,7 +152,9 @@ class _CalendarPageState extends State<CalendarPage> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+
                     const SizedBox(height: 12),
+
                     TextField(
                       controller: rateController,
                       keyboardType:
@@ -156,7 +169,9 @@ class _CalendarPageState extends State<CalendarPage> {
                         border: OutlineInputBorder(),
                       ),
                     ),
+
                     const SizedBox(height: 15),
+
                     Text(
                       'કુલ: ₹${total.toStringAsFixed(2)}',
                       style: const TextStyle(
@@ -174,6 +189,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   },
                   child: const Text('રદ કરો'),
                 ),
+
                 FilledButton(
                   onPressed: () async {
                     final quantity =
@@ -201,7 +217,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     AppData.works.add(
                       WorkEntry(
                         worker: selectedWorker,
-                        date: selectedDateString,
+                        date: selectedDate,
                         quantity: quantity,
                         rate: rate,
                       ),
@@ -277,7 +293,9 @@ class _CalendarPageState extends State<CalendarPage> {
                       }
                     },
                   ),
+
                   const SizedBox(height: 12),
+
                   TextField(
                     controller: amountController,
                     keyboardType:
@@ -299,6 +317,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   },
                   child: const Text('રદ કરો'),
                 ),
+
                 FilledButton(
                   onPressed: () async {
                     final amount =
@@ -319,7 +338,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     AppData.payments.add(
                       Payment(
                         worker: selectedWorker,
-                        date: selectedDateString,
+                        date: selectedDate,
                         amount: amount,
                       ),
                     );
@@ -355,12 +374,11 @@ class _CalendarPageState extends State<CalendarPage> {
     final firstDay =
         DateTime(selectedDate.year, selectedDate.month, 1);
 
-    final daysInMonth =
-        DateTime(
-          selectedDate.year,
-          selectedDate.month + 1,
-          0,
-        ).day;
+    final daysInMonth = DateTime(
+      selectedDate.year,
+      selectedDate.month + 1,
+      0,
+    ).day;
 
     final startWeekday = firstDay.weekday;
 
@@ -463,6 +481,7 @@ class _CalendarPageState extends State<CalendarPage> {
                           Icons.chevron_left,
                         ),
                       ),
+
                       Text(
                         monthName,
                         style: const TextStyle(
@@ -470,6 +489,7 @@ class _CalendarPageState extends State<CalendarPage> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+
                       IconButton(
                         onPressed: nextMonth,
                         icon: const Icon(
@@ -544,7 +564,9 @@ class _CalendarPageState extends State<CalendarPage> {
                   label: const Text('કામ'),
                 ),
               ),
+
               const SizedBox(width: 10),
+
               Expanded(
                 child: FilledButton.icon(
                   onPressed: addPaymentForDate,
@@ -626,7 +648,10 @@ class _CalendarPageState extends State<CalendarPage> {
                     child: Icon(Icons.payments),
                   ),
                   title: Text(payment.worker),
-                  subtitle: Text(payment.date),
+                  subtitle: Text(
+                    DateFormat('dd-MM-yyyy')
+                        .format(payment.date),
+                  ),
                   trailing: Text(
                     '₹${payment.amount.toStringAsFixed(0)}',
                     style: const TextStyle(
