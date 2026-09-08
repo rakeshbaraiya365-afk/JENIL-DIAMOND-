@@ -30,11 +30,60 @@ workflows:
           TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
 
           if [ -f "$TELEPHONY_GRADLE" ]; then
-            if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
-              sed -i.bak '/android {/a\
-              namespace "com.shounakmulay.telephony"
-              ' "$TELEPHONY_GRADLE"
-            fi
+            python3 - <<'PY'
+from pathlib import Path
+
+p = Path.home() / ".pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
+s = p.read_text()
+
+if "namespace" not in s:
+    s = s.replace(
+        "android {",
+        """android {
+    namespace "com.shounakmulay.telephony"
+""",
+        1
+    )
+
+p.write_text(s)
+PY
+          fi
+
+      - name: Fix Telephony JVM Target
+        script: |
+          TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
+
+          if [ -f "$TELEPHONY_GRADLE" ]; then
+            python3 - <<'PY'
+from pathlib import Path
+
+p = Path.home() / ".pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
+s = p.read_text()
+
+if "compileOptions" not in s:
+    s = s.replace(
+        "android {",
+        """android {
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+""",
+        1
+    )
+
+if "kotlinOptions" not in s:
+    s += """
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+}
+"""
+
+p.write_text(s)
+PY
           fi
 
       - name: Generate App Icon
