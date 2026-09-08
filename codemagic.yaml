@@ -7,14 +7,26 @@ workflows:
       flutter: stable
 
     scripts:
+
       - name: Generate Android project
-        script: flutter create --platforms=android .
+        script: |
+          flutter create --platforms=android .
 
       - name: Get Flutter packages
-        script: flutter pub get
+        script: |
+          flutter pub get
+
+      - name: Generate App Icon
+        script: |
+          dart run flutter_launcher_icons
+
+      - name: Generate Splash Screen
+        script: |
+          dart run flutter_native_splash:create
 
       - name: Build Android APK
-        script: flutter build apk --debug
+        script: |
+          flutter build apk --debug
 
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
