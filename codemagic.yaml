@@ -12,6 +12,15 @@ workflows:
         script: |
           flutter create --platforms=android .
 
+      - name: Add SMS Permission
+        script: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          if ! grep -q "android.permission.SEND_SMS" "$MANIFEST"; then
+            sed -i.bak '/<application/i\
+          <uses-permission android:name="android.permission.SEND_SMS"/>' "$MANIFEST"
+          fi
+
       - name: Get Flutter packages
         script: |
           flutter pub get
