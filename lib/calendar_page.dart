@@ -17,12 +17,11 @@ class CalendarPage extends StatefulWidget {
 class _CalendarPageState extends State<CalendarPage> {
   DateTime selectedDate = DateTime(2026, 1, 1);
 
-  String get selectedDateString {
+  String get dateText {
     return DateFormat('dd-MM-yyyy').format(selectedDate);
   }
 
-  // Check whether two dates are the same day.
-  bool isSameDay(DateTime a, DateTime b) {
+  bool sameDay(DateTime a, DateTime b) {
     return a.year == b.year &&
         a.month == b.month &&
         a.day == b.day;
@@ -30,22 +29,22 @@ class _CalendarPageState extends State<CalendarPage> {
 
   List<WorkEntry> get selectedWorks {
     return AppData.works
-        .where((work) => isSameDay(work.date, selectedDate))
+        .where((work) => sameDay(work.date, selectedDate))
         .toList();
   }
 
   List<Payment> get selectedPayments {
     return AppData.payments
-        .where((payment) => isSameDay(payment.date, selectedDate))
+        .where((payment) => sameDay(payment.date, selectedDate))
         .toList();
   }
 
   bool hasEntry(DateTime date) {
     return AppData.works.any(
-          (work) => isSameDay(work.date, date),
+          (work) => sameDay(work.date, date),
         ) ||
         AppData.payments.any(
-          (payment) => isSameDay(payment.date, date),
+          (payment) => sameDay(payment.date, date),
         );
   }
 
@@ -79,7 +78,11 @@ class _CalendarPageState extends State<CalendarPage> {
     });
   }
 
-  Future<void> addWorkForDate() async {
+  // ==================================================
+  // WORK ADD
+  // ==================================================
+
+  Future<void> addWork() async {
     if (AppData.workers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -89,165 +92,33 @@ class _CalendarPageState extends State<CalendarPage> {
       return;
     }
 
-    String selectedWorker = AppData.workers.first.name;
-
-    final quantityController = TextEditingController();
-    final rateController = TextEditingController();
-
-    await showDialog(
+    final result = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final quantity =
-                double.tryParse(quantityController.text) ?? 0;
-
-            final rate =
-                double.tryParse(rateController.text) ?? 0;
-
-            final total = quantity * rate;
-
-            return AlertDialog(
-              title: Text(
-                'કામ ઉમેરો\n$selectedDateString',
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      value: selectedWorker,
-                      decoration: const InputDecoration(
-                        labelText: 'કારીગર',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: AppData.workers.map((worker) {
-                        return DropdownMenuItem<String>(
-                          value: worker.name,
-                          child: Text(worker.name),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setDialogState(() {
-                            selectedWorker = value;
-                          });
-                        }
-                      },
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    TextField(
-                      controller: quantityController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) {
-                        setDialogState(() {});
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'ક્વોન્ટિટી',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    TextField(
-                      controller: rateController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      onChanged: (_) {
-                        setDialogState(() {});
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'રેટ',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    Text(
-                      'કુલ: ₹${total.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('રદ કરો'),
-                ),
-
-                FilledButton(
-                  onPressed: () async {
-                    final quantity =
-                        double.tryParse(
-                              quantityController.text,
-                            ) ??
-                            0;
-
-                    final rate =
-                        double.tryParse(
-                              rateController.text,
-                            ) ??
-                            0;
-
-                    if (quantity <= 0 || rate <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content:
-                              Text('ક્વોન્ટિટી અને રેટ દાખલ કરો'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    AppData.works.add(
-                      WorkEntry(
-                        worker: selectedWorker,
-                        date: selectedDate,
-                        quantity: quantity,
-                        rate: rate,
-                      ),
-                    );
-
-                    AppData.recalculate();
-                    await AppData.save();
-
-                    if (!dialogContext.mounted) return;
-
-                    Navigator.pop(dialogContext);
-
-                    widget.onRefresh();
-
-                    setState(() {});
-                  },
-                  child: const Text('સેવ કરો'),
-                ),
-              ],
-            );
-          },
+      barrierDismissible: false,
+      builder: (_) {
+        return AddWorkDialog(
+          date: selectedDate,
         );
       },
     );
 
-    quantityController.dispose();
-    rateController.dispose();
+    if (result == true && mounted) {
+      setState(() {});
+      widget.onRefresh();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('કામ સફળતાપૂર્વક સેવ થયું'),
+        ),
+      );
+    }
   }
 
-  Future<void> addPaymentForDate() async {
+  // ==================================================
+  // PAYMENT ADD
+  // ==================================================
+
+  Future<void> addPayment() async {
     if (AppData.workers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -257,122 +128,42 @@ class _CalendarPageState extends State<CalendarPage> {
       return;
     }
 
-    String selectedWorker = AppData.workers.first.name;
-
-    final amountController = TextEditingController();
-
-    await showDialog(
+    final result = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text(
-                'ઉપાડ ઉમેરો\n$selectedDateString',
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: selectedWorker,
-                    decoration: const InputDecoration(
-                      labelText: 'કારીગર',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: AppData.workers.map((worker) {
-                      return DropdownMenuItem<String>(
-                        value: worker.name,
-                        child: Text(worker.name),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setDialogState(() {
-                          selectedWorker = value;
-                        });
-                      }
-                    },
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  TextField(
-                    controller: amountController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'ઉપાડની રકમ',
-                      prefixText: '₹ ',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('રદ કરો'),
-                ),
-
-                FilledButton(
-                  onPressed: () async {
-                    final amount =
-                        double.tryParse(
-                              amountController.text,
-                            ) ??
-                            0;
-
-                    if (amount <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('ઉપાડની રકમ દાખલ કરો'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    AppData.payments.add(
-                      Payment(
-                        worker: selectedWorker,
-                        date: selectedDate,
-                        amount: amount,
-                      ),
-                    );
-
-                    AppData.recalculate();
-                    await AppData.save();
-
-                    if (!dialogContext.mounted) return;
-
-                    Navigator.pop(dialogContext);
-
-                    widget.onRefresh();
-
-                    setState(() {});
-                  },
-                  child: const Text('સેવ કરો'),
-                ),
-              ],
-            );
-          },
+      barrierDismissible: false,
+      builder: (_) {
+        return AddPaymentDialog(
+          date: selectedDate,
         );
       },
     );
 
-    amountController.dispose();
+    if (result == true && mounted) {
+      setState(() {});
+      widget.onRefresh();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ઉપાડ સફળતાપૂર્વક સેવ થયો'),
+        ),
+      );
+    }
   }
+
+  // ==================================================
+  // BUILD
+  // ==================================================
 
   @override
   Widget build(BuildContext context) {
     final monthName =
         DateFormat('MMMM yyyy').format(selectedDate);
 
-    final firstDay =
-        DateTime(selectedDate.year, selectedDate.month, 1);
+    final firstDay = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      1,
+    );
 
     final daysInMonth = DateTime(
       selectedDate.year,
@@ -380,11 +171,11 @@ class _CalendarPageState extends State<CalendarPage> {
       0,
     ).day;
 
-    final startWeekday = firstDay.weekday;
+    final firstWeekday = firstDay.weekday;
 
-    final cells = <Widget>[];
+    final List<Widget> cells = [];
 
-    for (int i = 1; i < startWeekday; i++) {
+    for (int i = 1; i < firstWeekday; i++) {
       cells.add(const SizedBox());
     }
 
@@ -395,51 +186,59 @@ class _CalendarPageState extends State<CalendarPage> {
         day,
       );
 
-      final isSelected =
-          date.year == selectedDate.year &&
-          date.month == selectedDate.month &&
-          date.day == selectedDate.day;
+      final selected = sameDay(
+        date,
+        selectedDate,
+      );
 
-      final entryExists = hasEntry(date);
+      final exists = hasEntry(date);
 
       cells.add(
-        GestureDetector(
+        InkWell(
           onTap: () => selectDate(date),
+          borderRadius: BorderRadius.circular(10),
           child: Container(
             margin: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? Theme.of(context).colorScheme.primary
-                  : entryExists
+              color: selected
+                  ? Theme.of(context)
+                      .colorScheme
+                      .primary
+                  : exists
                       ? Colors.blue.withOpacity(0.10)
                       : Colors.white,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
+                color: selected
+                    ? Theme.of(context)
+                        .colorScheme
+                        .primary
                     : Colors.grey.shade300,
               ),
             ),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
               children: [
                 Text(
                   '$day',
                   style: TextStyle(
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: isSelected
+                    color: selected
                         ? Colors.white
                         : Colors.black87,
                   ),
                 ),
-                if (entryExists)
+                if (exists)
                   Container(
-                    margin: const EdgeInsets.only(top: 4),
+                    margin:
+                        const EdgeInsets.only(top: 4),
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isSelected
+                      color: selected
                           ? Colors.white
                           : Colors.blue,
                     ),
@@ -466,6 +265,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 12),
 
+          // CALENDAR
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -481,7 +281,6 @@ class _CalendarPageState extends State<CalendarPage> {
                           Icons.chevron_left,
                         ),
                       ),
-
                       Text(
                         monthName,
                         style: const TextStyle(
@@ -489,7 +288,6 @@ class _CalendarPageState extends State<CalendarPage> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-
                       IconButton(
                         onPressed: nextMonth,
                         icon: const Icon(
@@ -501,15 +299,15 @@ class _CalendarPageState extends State<CalendarPage> {
 
                   const SizedBox(height: 8),
 
-                  Row(
-                    children: const [
-                      _WeekDay('સોમ'),
-                      _WeekDay('મંગળ'),
-                      _WeekDay('બુધ'),
-                      _WeekDay('ગુરુ'),
-                      _WeekDay('શુક્ર'),
-                      _WeekDay('શનિ'),
-                      _WeekDay('રવિ'),
+                  const Row(
+                    children: [
+                      WeekDay('સોમ'),
+                      WeekDay('મંગળ'),
+                      WeekDay('બુધ'),
+                      WeekDay('ગુરુ'),
+                      WeekDay('શુક્ર'),
+                      WeekDay('શનિ'),
+                      WeekDay('રવિ'),
                     ],
                   ),
 
@@ -529,6 +327,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 15),
 
+          // SELECTED DATE
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -541,7 +340,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'પસંદ કરેલી તારીખ\n$selectedDateString',
+                      'પસંદ કરેલી તારીખ\n$dateText',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -555,21 +354,20 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 12),
 
+          // BUTTONS
           Row(
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: addWorkForDate,
+                  onPressed: addWork,
                   icon: const Icon(Icons.diamond),
                   label: const Text('કામ'),
                 ),
               ),
-
               const SizedBox(width: 10),
-
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: addPaymentForDate,
+                  onPressed: addPayment,
                   icon: const Icon(Icons.payments),
                   label: const Text('ઉપાડ'),
                 ),
@@ -579,6 +377,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 20),
 
+          // WORK HISTORY
           const Text(
             'આ તારીખનું કામ',
             style: TextStyle(
@@ -600,27 +399,30 @@ class _CalendarPageState extends State<CalendarPage> {
             )
           else
             ...selectedWorks.map(
-              (work) => Card(
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.diamond),
-                  ),
-                  title: Text(work.worker),
-                  subtitle: Text(
-                    '${work.quantity} × ₹${work.rate}',
-                  ),
-                  trailing: Text(
-                    '₹${work.total.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+              (work) {
+                return Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.diamond),
+                    ),
+                    title: Text(work.worker),
+                    subtitle: Text(
+                      '${work.quantity} × ₹${work.rate}',
+                    ),
+                    trailing: Text(
+                      '₹${work.total.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
 
           const SizedBox(height: 15),
 
+          // PAYMENT HISTORY
           const Text(
             'આ તારીખનો ઉપાડ',
             style: TextStyle(
@@ -642,24 +444,26 @@ class _CalendarPageState extends State<CalendarPage> {
             )
           else
             ...selectedPayments.map(
-              (payment) => Card(
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.payments),
-                  ),
-                  title: Text(payment.worker),
-                  subtitle: Text(
-                    DateFormat('dd-MM-yyyy')
-                        .format(payment.date),
-                  ),
-                  trailing: Text(
-                    '₹${payment.amount.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+              (payment) {
+                return Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.payments),
+                    ),
+                    title: Text(payment.worker),
+                    subtitle: Text(
+                      DateFormat('dd-MM-yyyy')
+                          .format(payment.date),
+                    ),
+                    trailing: Text(
+                      '₹${payment.amount.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
         ],
       ),
@@ -667,10 +471,477 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 }
 
-class _WeekDay extends StatelessWidget {
+// ======================================================
+// WORK DIALOG
+// ======================================================
+
+class AddWorkDialog extends StatefulWidget {
+  final DateTime date;
+
+  const AddWorkDialog({
+    super.key,
+    required this.date,
+  });
+
+  @override
+  State<AddWorkDialog> createState() =>
+      _AddWorkDialogState();
+}
+
+class _AddWorkDialogState
+    extends State<AddWorkDialog> {
+  int selectedWorkerIndex = 0;
+
+  final quantityController =
+      TextEditingController();
+
+  final rateController =
+      TextEditingController();
+
+  String error = '';
+
+  @override
+  void dispose() {
+    quantityController.dispose();
+    rateController.dispose();
+    super.dispose();
+  }
+
+  Future<void> saveWork() async {
+    final quantity =
+        double.tryParse(
+              quantityController.text.trim(),
+            ) ??
+            0;
+
+    final rate =
+        double.tryParse(
+              rateController.text.trim(),
+            ) ??
+            0;
+
+    if (quantity <= 0 || rate <= 0) {
+      setState(() {
+        error =
+            'ક્વોન્ટિટી અને રેટ દાખલ કરો';
+      });
+      return;
+    }
+
+    if (AppData.workers.isEmpty) {
+      setState(() {
+        error = 'પહેલા કારીગર ઉમેરો';
+      });
+      return;
+    }
+
+    final worker =
+        AppData.workers[selectedWorkerIndex];
+
+    AppData.works.add(
+      WorkEntry(
+        worker: worker.name,
+        date: widget.date,
+        quantity: quantity,
+        rate: rate,
+      ),
+    );
+
+    AppData.recalculate();
+
+    await AppData.save();
+
+    if (!mounted) return;
+
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final quantity =
+        double.tryParse(
+              quantityController.text,
+            ) ??
+            0;
+
+    final rate =
+        double.tryParse(
+              rateController.text,
+            ) ??
+            0;
+
+    final total = quantity * rate;
+
+    return AlertDialog(
+      title: Text(
+        'કામ ઉમેરો\n${DateFormat('dd-MM-yyyy').format(widget.date)}',
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // WORKER SELECT
+            InkWell(
+              onTap: () async {
+                final index =
+                    await showDialog<int>(
+                  context: context,
+                  builder: (_) {
+                    return SimpleDialog(
+                      title: const Text(
+                        'કારીગર પસંદ કરો',
+                      ),
+                      children: List.generate(
+                        AppData.workers.length,
+                        (index) {
+                          return SimpleDialogOption(
+                            onPressed: () {
+                              Navigator.of(context)
+                                  .pop(index);
+                            },
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.person,
+                                ),
+                                const SizedBox(
+                                  width: 10,
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    AppData
+                                        .workers[index]
+                                        .name,
+                                  ),
+                                ),
+                                if (index ==
+                                    selectedWorkerIndex)
+                                  const Icon(
+                                    Icons.check,
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                );
+
+                if (index != null && mounted) {
+                  setState(() {
+                    selectedWorkerIndex = index;
+                  });
+                }
+              },
+              borderRadius:
+                  BorderRadius.circular(8),
+              child: InputDecorator(
+                decoration:
+                    const InputDecoration(
+                  labelText: 'કારીગર',
+                  border:
+                      OutlineInputBorder(),
+                  suffixIcon:
+                      Icon(Icons.arrow_drop_down),
+                ),
+                child: Text(
+                  AppData
+                      .workers[
+                          selectedWorkerIndex]
+                      .name,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: quantityController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (_) {
+                setState(() {});
+              },
+              decoration:
+                  const InputDecoration(
+                labelText: 'ક્વોન્ટિટી',
+                border:
+                    OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: rateController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (_) {
+                setState(() {});
+              },
+              decoration:
+                  const InputDecoration(
+                labelText: 'રેટ',
+                prefixText: '₹ ',
+                border:
+                    OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            Text(
+              'કુલ: ₹${total.toStringAsFixed(2)}',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            if (error.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                error,
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(false);
+          },
+          child: const Text('રદ કરો'),
+        ),
+        FilledButton(
+          onPressed: saveWork,
+          child: const Text('સેવ કરો'),
+        ),
+      ],
+    );
+  }
+}
+
+// ======================================================
+// PAYMENT DIALOG
+// ======================================================
+
+class AddPaymentDialog extends StatefulWidget {
+  final DateTime date;
+
+  const AddPaymentDialog({
+    super.key,
+    required this.date,
+  });
+
+  @override
+  State<AddPaymentDialog> createState() =>
+      _AddPaymentDialogState();
+}
+
+class _AddPaymentDialogState
+    extends State<AddPaymentDialog> {
+  int selectedWorkerIndex = 0;
+
+  final amountController =
+      TextEditingController();
+
+  String error = '';
+
+  @override
+  void dispose() {
+    amountController.dispose();
+    super.dispose();
+  }
+
+  Future<void> savePayment() async {
+    final amount =
+        double.tryParse(
+              amountController.text.trim(),
+            ) ??
+            0;
+
+    if (amount <= 0) {
+      setState(() {
+        error =
+            'ઉપાડની રકમ દાખલ કરો';
+      });
+      return;
+    }
+
+    if (AppData.workers.isEmpty) {
+      setState(() {
+        error = 'પહેલા કારીગર ઉમેરો';
+      });
+      return;
+    }
+
+    final worker =
+        AppData.workers[selectedWorkerIndex];
+
+    AppData.payments.add(
+      Payment(
+        worker: worker.name,
+        date: widget.date,
+        amount: amount,
+      ),
+    );
+
+    AppData.recalculate();
+
+    await AppData.save();
+
+    if (!mounted) return;
+
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        'ઉપાડ ઉમેરો\n${DateFormat('dd-MM-yyyy').format(widget.date)}',
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // WORKER SELECT
+          InkWell(
+            onTap: () async {
+              final index =
+                  await showDialog<int>(
+                context: context,
+                builder: (_) {
+                  return SimpleDialog(
+                    title: const Text(
+                      'કારીગર પસંદ કરો',
+                    ),
+                    children: List.generate(
+                      AppData.workers.length,
+                      (index) {
+                        return SimpleDialogOption(
+                          onPressed: () {
+                            Navigator.of(context)
+                                .pop(index);
+                          },
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.person,
+                              ),
+                              const SizedBox(
+                                width: 10,
+                              ),
+                              Expanded(
+                                child: Text(
+                                  AppData
+                                      .workers[index]
+                                      .name,
+                                ),
+                              ),
+                              if (index ==
+                                  selectedWorkerIndex)
+                                const Icon(
+                                  Icons.check,
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              );
+
+              if (index != null && mounted) {
+                setState(() {
+                  selectedWorkerIndex = index;
+                });
+              }
+            },
+            borderRadius:
+                BorderRadius.circular(8),
+            child: InputDecorator(
+              decoration:
+                  const InputDecoration(
+                labelText: 'કારીગર',
+                border:
+                    OutlineInputBorder(),
+                suffixIcon:
+                    Icon(Icons.arrow_drop_down),
+              ),
+              child: Text(
+                AppData
+                    .workers[
+                        selectedWorkerIndex]
+                    .name,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          TextField(
+            controller: amountController,
+            keyboardType:
+                const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            decoration:
+                const InputDecoration(
+              labelText: 'ઉપાડની રકમ',
+              prefixText: '₹ ',
+              border:
+                  OutlineInputBorder(),
+            ),
+          ),
+
+          if (error.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              error,
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(false);
+          },
+          child: const Text('રદ કરો'),
+        ),
+        FilledButton(
+          onPressed: savePayment,
+          child: const Text('સેવ કરો'),
+        ),
+      ],
+    );
+  }
+}
+
+// ======================================================
+// WEEK DAYS
+// ======================================================
+
+class WeekDay extends StatelessWidget {
   final String text;
 
-  const _WeekDay(this.text);
+  const WeekDay(this.text, {super.key});
 
   @override
   Widget build(BuildContext context) {
