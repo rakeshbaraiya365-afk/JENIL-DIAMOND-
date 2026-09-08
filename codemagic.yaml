@@ -11,9 +11,16 @@ workflows:
         script: |
           flutter create --platforms=android .
 
+      - name: Set Android Compile SDK
+        script: |
+          FILE="android/app/build.gradle"
+
+          sed -i.bak 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' "$FILE"
+
       - name: Add SMS Permission
         script: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
+
           if ! grep -q "android.permission.SEND_SMS" "$MANIFEST"; then
             sed -i.bak '/<application/i\
           <uses-permission android:name="android.permission.SEND_SMS"/>' "$MANIFEST"
@@ -26,6 +33,7 @@ workflows:
       - name: Fix Telephony Namespace
         script: |
           FILE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
+
           sed -i.bak '/android {/a\
               namespace "com.shounakmulay.telephony"
           ' "$FILE"
