@@ -7,67 +7,80 @@ workflows:
       flutter: stable
 
     scripts:
-      - name: Generate Android project
-        script: |
-          flutter create --platforms=android .
-
-      - name: Set Android Compile SDK
-        script: |
-          FILE="android/app/build.gradle"
-
-          sed -i.bak 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' "$FILE"
-
-      - name: Add SMS Permission
-        script: |
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-
-          if ! grep -q "android.permission.SEND_SMS" "$MANIFEST"; then
-            sed -i.bak '/<application/i\
-          <uses-permission android:name="android.permission.SEND_SMS"/>' "$MANIFEST"
-          fi
 
       - name: Get Flutter packages
         script: |
           flutter pub get
 
-      - name: Fix Telephony Namespace
+      - name: Create Android project
         script: |
-          FILE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
+          flutter create --platforms=android .
 
-          sed -i.bak '/android {/a\
-              namespace "com.shounakmulay.telephony"
-          ' "$FILE"
-
-      - name: Fix Telephony JVM
+      - name: Set Android Compile SDK
         script: |
-          FILE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
+          echo "Checking Android files..."
 
-          sed -i.bak '/android {/a\
-              compileOptions {\
-                  sourceCompatibility JavaVersion.VERSION_11\
-                  targetCompatibility JavaVersion.VERSION_11\
-              }\
-          ' "$FILE"
+          if [ -f "android/app/build.gradle.kts" ]; then
+            echo "Found build.gradle.kts"
+            sed -i.bak 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle.kts
+          fi
 
-          cat >> "$FILE" <<'EOF'
+          if [ -f "android/app/build.gradle" ]; then
+            echo "Found build.gradle"
+            sed -i.bak 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' android/app/build.gradle
+            sed -i.bak 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle
+          fi
 
-          tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-              kotlinOptions {
-                  jvmTarget = "11"
-              }
-          }
-          EOF
+          echo "Android compile SDK fixed."
 
-      - name: Generate App Icon
+      - name: Fix Telephony Plugin
         script: |
-          dart run flutter_launcher_icons
+          TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
 
-      - name: Generate Splash Screen
-        script: |
-          dart run flutter_native_splash:create
+          if [ -f "$TELEPHONY_GRADLE" ]; then
+            echo "Found telephony plugin"
 
-      - name: Build Android APK
+            # Add namespace
+            if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
+              sed -i.bak '/android {/a\
+                  namespace "com.shounakmulay.telephony"
+              ' "$TELEPHONY_GRADLE"
+            fi
+
+            # Fix compile SDK 31 -> 36
+            sed -i.bak 's/compileSdkVersion 31/compileSdkVersion 36/g' "$TELEPHONY_GRADLE"
+            sed -i.bak 's/compileSdk 31/compileSdk 36/g' "$TELEPHONY_GRADLE"
+            sed -i.bak 's/compileSdk = 31/compileSdk = 36/g' "$TELEPHONY_GRADLE"
+
+            # Fix Java/Kotlin JVM target
+            sed -i.bak '/android {/a\
+                compileOptions {\
+                    sourceCompatibility JavaVersion.VERSION_11\
+                    targetCompatibility JavaVersion.VERSION_11\
+                }\
+            ' "$TELEPHONY_GRADLE"
+
+            echo "Telephony plugin fixed."
+          else
+            echo "Telephony gradle file not found."
+          fi
+
+      - name: Add SMS permission
         script: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          if [ -f "$MANIFEST" ]; then
+            if ! grep -q "android.permission.SEND_SMS" "$MANIFEST"; then
+              sed -i.bak '/<manifest/a\
+              <uses-permission android:name="android.permission.SEND_SMS"/>
+              ' "$MANIFEST"
+            fi
+          fi
+
+      - name: Build APK
+        script: |
+          flutter clean
+          flutter pub get
           flutter build apk --debug
 
     artifacts:
