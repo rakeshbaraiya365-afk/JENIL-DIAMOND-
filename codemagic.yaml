@@ -25,6 +25,18 @@ workflows:
         script: |
           flutter pub get
 
+      - name: Fix Telephony Namespace
+        script: |
+          TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
+
+          if [ -f "$TELEPHONY_GRADLE" ]; then
+            if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
+              sed -i.bak '/android {/a\
+              namespace "com.shounakmulay.telephony"
+              ' "$TELEPHONY_GRADLE"
+            fi
+          fi
+
       - name: Generate App Icon
         script: |
           dart run flutter_launcher_icons
