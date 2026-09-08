@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:telephony/telephony.dart';
 
 import 'calendar_page.dart';
 
@@ -1040,6 +1041,9 @@ class _WorkPageState extends State<WorkPage> {
   final quantityController = TextEditingController();
   final rateController = TextEditingController();
 
+  // Automatic SMS માટે Telephony
+  final Telephony telephony = Telephony.instance;
+
   double get total {
     final quantity =
         double.tryParse(quantityController.text) ?? 0;
@@ -1049,6 +1053,69 @@ class _WorkPageState extends State<WorkPage> {
 
     return quantity * rate;
   }
+
+  // ==========================================================
+  // AUTOMATIC SMS
+  // ==========================================================
+
+  Future<void> sendAutomaticSms({
+    required Worker worker,
+    required DateTime date,
+    required double quantity,
+    required double rate,
+    required double total,
+  }) async {
+    if (worker.mobile.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final permission =
+          await telephony.requestSmsPermissions;
+
+      if (permission != true) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'SMS permission આપવામાં આવી નથી. કામ સાચવાઈ ગયું છે.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      final message =
+          'JENIL DIAMOND\n'
+          'કારીગર: ${worker.name}\n'
+          'તારીખ: ${DateFormat('dd-MM-yyyy').format(date)}\n'
+          'જથ્થો: ${quantity.toStringAsFixed(2)}\n'
+          'દર: ₹${rate.toStringAsFixed(2)}\n'
+          'કુલ કામ: ₹${total.toStringAsFixed(2)}';
+
+      await telephony.sendSms(
+        to: worker.mobile.trim(),
+        message: message,
+        isMultipart: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'કામ સાચવાઈ ગયું છે, પરંતુ SMS મોકલી શકાયો નથી.',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ==========================================================
+  // SAVE WORK
+  // ==========================================================
 
   Future<void> saveWork() async {
     if (selectedWorker == null) {
@@ -1065,13 +1132,27 @@ class _WorkPageState extends State<WorkPage> {
       return;
     }
 
+    final worker = selectedWorker!;
+    final date = DateTime.now();
+    final totalAmount = quantity * rate;
+
+    // પહેલા કામ સાચવવું
     await AppData.addWork(
       WorkEntry(
-        worker: selectedWorker!.name,
-        date: DateTime.now(),
+        worker: worker.name,
+        date: date,
         quantity: quantity,
         rate: rate,
       ),
+    );
+
+    // પછી Automatic SMS
+    await sendAutomaticSms(
+      worker: worker,
+      date: date,
+      quantity: quantity,
+      rate: rate,
+      total: totalAmount,
     );
 
     quantityController.clear();
@@ -1080,11 +1161,14 @@ class _WorkPageState extends State<WorkPage> {
     if (!mounted) return;
 
     setState(() {});
+
     widget.onRefresh();
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('કામ સાચવાઈ ગયું છે.'),
+        content: Text(
+          'કામ સાચવાઈ ગયું છે અને SMS મોકલવાની પ્રક્રિયા થઈ ગઈ છે.',
+        ),
       ),
     );
   }
