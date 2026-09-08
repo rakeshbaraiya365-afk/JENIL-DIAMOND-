@@ -18,51 +18,76 @@ workflows:
 
       - name: Set Android Compile SDK
         script: |
-          echo "Checking Android files..."
+          echo "Setting Android Compile SDK to 36"
 
           if [ -f "android/app/build.gradle.kts" ]; then
-            echo "Found build.gradle.kts"
-            sed -i.bak 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle.kts
+            sed -i.bak \
+              's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' \
+              android/app/build.gradle.kts
           fi
 
           if [ -f "android/app/build.gradle" ]; then
-            echo "Found build.gradle"
-            sed -i.bak 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' android/app/build.gradle
-            sed -i.bak 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle
-          fi
+            sed -i.bak \
+              's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' \
+              android/app/build.gradle
 
-          echo "Android compile SDK fixed."
+            sed -i.bak \
+              's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' \
+              android/app/build.gradle
+          fi
 
       - name: Fix Telephony Plugin
         script: |
           TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
 
           if [ -f "$TELEPHONY_GRADLE" ]; then
-            echo "Found telephony plugin"
 
-            # Add namespace
+            echo "Telephony file found"
+
+            # Namespace
             if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
               sed -i.bak '/android {/a\
                   namespace "com.shounakmulay.telephony"
               ' "$TELEPHONY_GRADLE"
             fi
 
-            # Fix compile SDK 31 -> 36
-            sed -i.bak 's/compileSdkVersion 31/compileSdkVersion 36/g' "$TELEPHONY_GRADLE"
-            sed -i.bak 's/compileSdk 31/compileSdk 36/g' "$TELEPHONY_GRADLE"
-            sed -i.bak 's/compileSdk = 31/compileSdk = 36/g' "$TELEPHONY_GRADLE"
+            # Compile SDK 36
+            sed -i.bak \
+              's/compileSdkVersion 31/compileSdkVersion 36/g' \
+              "$TELEPHONY_GRADLE"
 
-            # Fix Java/Kotlin JVM target
-            sed -i.bak '/android {/a\
-                compileOptions {\
-                    sourceCompatibility JavaVersion.VERSION_11\
-                    targetCompatibility JavaVersion.VERSION_11\
-                }\
-            ' "$TELEPHONY_GRADLE"
+            sed -i.bak \
+              's/compileSdk 31/compileSdk 36/g' \
+              "$TELEPHONY_GRADLE"
 
-            echo "Telephony plugin fixed."
+            sed -i.bak \
+              's/compileSdk = 31/compileSdk = 36/g' \
+              "$TELEPHONY_GRADLE"
+
+            # Java 11
+            if ! grep -q "sourceCompatibility" "$TELEPHONY_GRADLE"; then
+              sed -i.bak '/android {/a\
+                  compileOptions {\
+                      sourceCompatibility JavaVersion.VERSION_11\
+                      targetCompatibility JavaVersion.VERSION_11\
+                  }
+              ' "$TELEPHONY_GRADLE"
+            fi
+
+            # Kotlin 11
+            if ! grep -q "jvmTarget" "$TELEPHONY_GRADLE"; then
+              sed -i.bak '/android {/a\
+                  kotlinOptions {\
+                      jvmTarget = "11"\
+                  }
+              ' "$TELEPHONY_GRADLE"
+            fi
+
+            echo "Telephony fixed: Java 11 + Kotlin 11 + SDK 36"
+
           else
-            echo "Telephony gradle file not found."
+            echo "ERROR: Telephony Gradle file not found"
+            exit 1
           fi
 
       - name: Add SMS permission
