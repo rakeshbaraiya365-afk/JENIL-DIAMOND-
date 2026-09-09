@@ -117,54 +117,49 @@ workflows:
         script: |
           echo "Configuring Android release signing..."
 
-          APP_GRADLE="android/app/build.gradle"
+          APP_GRADLE="android/app/build.gradle.kts"
 
           if [ ! -f "$APP_GRADLE" ]; then
-            echo "ERROR: android/app/build.gradle not found"
+            echo "ERROR: android/app/build.gradle.kts not found"
             exit 1
           fi
-
-          cp "$APP_GRADLE" "$APP_GRADLE.backup"
 
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path("android/app/build.gradle")
+          p = Path("android/app/build.gradle.kts")
           s = p.read_text()
 
           signing = '''
-          android {
               signingConfigs {
-                  release {
-                      storeFile file(System.getenv("CM_KEYSTORE_PATH"))
-                      storePassword System.getenv("CM_KEYSTORE_PASSWORD")
-                      keyAlias System.getenv("CM_KEY_ALIAS")
-                      keyPassword System.getenv("CM_KEY_PASSWORD")
+                  create("release") {
+                      storeFile = file(System.getenv("CM_KEYSTORE_PATH"))
+                      storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
+                      keyAlias = System.getenv("CM_KEY_ALIAS")
+                      keyPassword = System.getenv("CM_KEY_PASSWORD")
                   }
               }
 
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-              }
-          }
           '''
 
-          marker = "android {"
+          marker = "    buildTypes {"
 
-          if marker not in s:
-              raise SystemExit("ERROR: android block not found")
+          if 'create("release")' not in s:
+              if marker not in s:
+                  raise SystemExit("ERROR: buildTypes block not found")
 
-          start = s.find(marker)
-          pos = start + len(marker)
+              s = s.replace(marker, signing + marker, 1)
 
-          s = s[:pos] + "\n" + signing.split("android {", 1)[1] + s[pos:]
+          s = s.replace(
+              'signingConfig = signingConfigs.getByName("debug")',
+              'signingConfig = signingConfigs.getByName("release")',
+              1
+          )
 
           p.write_text(s)
           PY
 
-          echo "Release signing configuration added."
+          echo "Release signing configuration added successfully."
 
       - name: Clean Flutter
         script: |
