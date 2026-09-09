@@ -38,8 +38,6 @@ workflows:
               android/app/build.gradle
           fi
 
-          echo "Android Compile SDK set."
-
       - name: Fix Telephony Plugin
         script: |
           TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
@@ -55,36 +53,10 @@ workflows:
             ' "$TELEPHONY_GRADLE"
           fi
 
-          sed -i.bak \
-            's/compileSdkVersion 31/compileSdkVersion 36/g' \
-            "$TELEPHONY_GRADLE"
-
-          sed -i.bak \
-            's/compileSdk 31/compileSdk 36/g' \
-            "$TELEPHONY_GRADLE"
-
-          sed -i.bak \
-            's/compileSdk = 31/compileSdk = 36/g' \
-            "$TELEPHONY_GRADLE"
-
-          sed -i.bak \
-            's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_11/g' \
-            "$TELEPHONY_GRADLE"
-
-          sed -i.bak -E \
-            "s/jvmTarget[[:space:]]*=[[:space:]]*['\"]1\.8['\"]/jvmTarget = '11'/g" \
-            "$TELEPHONY_GRADLE"
-
-          if ! grep -q "jvmTarget.*11" "$TELEPHONY_GRADLE"; then
-            cat >> "$TELEPHONY_GRADLE" <<'EOF'
-
-          tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-              kotlinOptions {
-                  jvmTarget = "11"
-              }
-          }
-          EOF
-          fi
+          sed -i.bak 's/compileSdkVersion 31/compileSdkVersion 36/g' "$TELEPHONY_GRADLE"
+          sed -i.bak 's/compileSdk 31/compileSdk 36/g' "$TELEPHONY_GRADLE"
+          sed -i.bak 's/compileSdk = 31/compileSdk = 36/g' "$TELEPHONY_GRADLE"
+          sed -i.bak 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_11/g' "$TELEPHONY_GRADLE"
 
       - name: Add SMS permission
         script: |
@@ -101,11 +73,9 @@ workflows:
             ' "$MANIFEST"
           fi
 
-          echo "SEND_SMS permission checked."
-
       - name: Configure Release Signing
         script: |
-          echo "Configuring RELEASE signing..."
+          echo "===== CONFIGURING RELEASE SIGNING ====="
 
           APP_GRADLE="android/app/build.gradle.kts"
 
@@ -125,7 +95,7 @@ workflows:
                   create("release") {
                       storeFile = file(System.getenv("CM_KEYSTORE_PATH"))
                       storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
-                      keyAlias = "Key0"
+                      keyAlias = System.getenv("CM_KEY_ALIAS")
                       keyPassword = System.getenv("CM_KEY_PASSWORD")
                   }
               }
@@ -138,18 +108,14 @@ workflows:
               if marker not in s:
                   raise SystemExit("ERROR: buildTypes block not found")
 
-              s = s.replace(
-                  marker,
-                  signing_block + marker,
-                  1
-              )
+              s = s.replace(marker, signing_block + marker, 1)
 
-          old = 'signingConfig = signingConfigs.getByName("debug")'
-          new = 'signingConfig = signingConfigs.getByName("release")'
+          s = s.replace(
+              'signingConfig = signingConfigs.getByName("debug")',
+              'signingConfig = signingConfigs.getByName("release")'
+          )
 
-          if old in s:
-              s = s.replace(old, new, 1)
-          elif new not in s:
+          if 'signingConfig = signingConfigs.getByName("release")' not in s:
               marker = "        release {"
 
               if marker not in s:
@@ -162,36 +128,46 @@ workflows:
               )
 
           p.write_text(s)
-
-          print("Release signing configured.")
-          print("Keystore alias: Key0")
-          print("Keystore path variable: CM_KEYSTORE_PATH")
           PY
 
-          echo "RELEASE SIGNING CONFIGURATION COMPLETE."
+          echo "===== SIGNING CONFIGURATION ====="
+          grep -n "create(\"release\")" android/app/build.gradle.kts || true
+          grep -n "keyAlias" android/app/build.gradle.kts || true
+          grep -n "signingConfig" android/app/build.gradle.kts || true
+          echo "================================="
 
       - name: Clean Flutter
         script: |
           flutter clean
           flutter pub get
 
-      - name: Verify Signing Configuration
-        script: |
-          echo "===== SIGNING CHECK ====="
-
-          grep -n "signingConfigs" android/app/build.gradle.kts || true
-          grep -n "keyAlias" android/app/build.gradle.kts || true
-          grep -n "signingConfig" android/app/build.gradle.kts || true
-
-          echo "========================="
-
       - name: Build Signed Release APK
         script: |
+          echo "===== BUILDING SIGNED RELEASE APK ====="
+
           flutter build apk --release
 
-          echo "===== APK FILES ====="
-          ls -lh build/app/outputs/flutter-apk/
-          echo "===================="
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK not found"
+            exit 1
+          fi
+
+          echo "APK CREATED: $APK"
+
+          echo "===== VERIFY APK SIGNATURE ====="
+
+          APKSIGNER=$(find "$ANDROID_HOME" -name apksigner -type f | head -1)
+
+          if [ -z "$APKSIGNER" ]; then
+            echo "ERROR: apksigner not found"
+            exit 1
+          fi
+
+          "$APKSIGNER" verify --verbose "$APK"
+
+          echo "===== SIGNATURE VERIFICATION COMPLETE ====="
 
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
