@@ -5,7 +5,6 @@ workflows:
 
     environment:
       flutter: stable
-
       android_signing:
         - jenil-release
 
@@ -54,9 +53,6 @@ workflows:
             exit 1
           fi
 
-          echo "Telephony Gradle file found:"
-          echo "$TELEPHONY_GRADLE"
-
           if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
             sed -i.bak '/android {/a\
                 namespace "com.shounakmulay.telephony"
@@ -84,32 +80,15 @@ workflows:
             "$TELEPHONY_GRADLE"
 
           if ! grep -q "jvmTarget.*11" "$TELEPHONY_GRADLE"; then
-
             cat >> "$TELEPHONY_GRADLE" <<'EOF'
 
-          // JENIL DIAMOND - Fix Kotlin JVM target
           tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
               kotlinOptions {
                   jvmTarget = "11"
               }
           }
           EOF
-
           fi
-
-          echo "----------------------------------------"
-          echo "Telephony final configuration:"
-          echo "----------------------------------------"
-
-          grep -n "namespace" "$TELEPHONY_GRADLE" || true
-          grep -n "compileSdk" "$TELEPHONY_GRADLE" || true
-          grep -n "sourceCompatibility" "$TELEPHONY_GRADLE" || true
-          grep -n "targetCompatibility" "$TELEPHONY_GRADLE" || true
-          grep -n "jvmTarget" "$TELEPHONY_GRADLE" || true
-
-          echo "----------------------------------------"
-          echo "Telephony fix completed."
-          echo "----------------------------------------"
 
       - name: Add SMS permission
         script: |
@@ -126,17 +105,66 @@ workflows:
               echo "SEND_SMS permission added."
 
             else
-
               echo "SEND_SMS permission already exists."
-
             fi
 
           else
-
             echo "ERROR: AndroidManifest.xml not found"
             exit 1
-
           fi
+
+      - name: Configure Release Signing
+        script: |
+          echo "Configuring Android release signing..."
+
+          APP_GRADLE="android/app/build.gradle"
+
+          if [ ! -f "$APP_GRADLE" ]; then
+            echo "ERROR: android/app/build.gradle not found"
+            exit 1
+          fi
+
+          cp "$APP_GRADLE" "$APP_GRADLE.backup"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+
+          signing = '''
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file(System.getenv("CM_KEYSTORE_PATH"))
+                      storePassword System.getenv("CM_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("CM_KEY_ALIAS")
+                      keyPassword System.getenv("CM_KEY_PASSWORD")
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          '''
+
+          marker = "android {"
+
+          if marker not in s:
+              raise SystemExit("ERROR: android block not found")
+
+          start = s.find(marker)
+          pos = start + len(marker)
+
+          s = s[:pos] + "\n" + signing.split("android {", 1)[1] + s[pos:]
+
+          p.write_text(s)
+          PY
+
+          echo "Release signing configuration added."
 
       - name: Clean Flutter
         script: |
