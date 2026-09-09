@@ -54,18 +54,12 @@ workflows:
           echo "Telephony Gradle file found:"
           echo "$TELEPHONY_GRADLE"
 
-          # ------------------------------------------------
-          # 1. Add Android namespace
-          # ------------------------------------------------
           if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
             sed -i.bak '/android {/a\
                 namespace "com.shounakmulay.telephony"
             ' "$TELEPHONY_GRADLE"
           fi
 
-          # ------------------------------------------------
-          # 2. Set Telephony Compile SDK to 36
-          # ------------------------------------------------
           sed -i.bak \
             's/compileSdkVersion 31/compileSdkVersion 36/g' \
             "$TELEPHONY_GRADLE"
@@ -78,23 +72,14 @@ workflows:
             's/compileSdk = 31/compileSdk = 36/g' \
             "$TELEPHONY_GRADLE"
 
-          # ------------------------------------------------
-          # 3. Java 11
-          # ------------------------------------------------
           sed -i.bak \
             's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_11/g' \
             "$TELEPHONY_GRADLE"
 
-          # ------------------------------------------------
-          # 4. Fix existing Kotlin 1.8 -> Kotlin 11
-          # ------------------------------------------------
           sed -i.bak -E \
             "s/jvmTarget[[:space:]]*=[[:space:]]*['\"]1\.8['\"]/jvmTarget = '11'/g" \
             "$TELEPHONY_GRADLE"
 
-          # ------------------------------------------------
-          # 5. Add Kotlin JVM target 11 if it does not exist
-          # ------------------------------------------------
           if ! grep -q "jvmTarget.*11" "$TELEPHONY_GRADLE"; then
 
             cat >> "$TELEPHONY_GRADLE" <<'EOF'
@@ -157,7 +142,7 @@ workflows:
 
       - name: Build APK
         script: |
-          flutter build apk --debug
+          flutter build apk --release
 
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
