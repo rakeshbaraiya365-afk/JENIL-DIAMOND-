@@ -20,7 +20,7 @@ workflows:
 
       - name: Set Android Compile SDK
         script: |
-          echo "Setting Android Compile SDK..."
+          echo "===== SETTING ANDROID COMPILE SDK ====="
 
           if [ -f "android/app/build.gradle.kts" ]; then
             sed -i.bak \
@@ -40,6 +40,8 @@ workflows:
 
       - name: Fix Telephony Plugin
         script: |
+          echo "===== FIXING TELEPHONY PLUGIN ====="
+
           TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
 
           if [ ! -f "$TELEPHONY_GRADLE" ]; then
@@ -47,19 +49,61 @@ workflows:
             exit 1
           fi
 
+          # Add namespace
           if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
             sed -i.bak '/android {/a\
                 namespace "com.shounakmulay.telephony"
             ' "$TELEPHONY_GRADLE"
           fi
 
-          sed -i.bak 's/compileSdkVersion 31/compileSdkVersion 36/g' "$TELEPHONY_GRADLE"
-          sed -i.bak 's/compileSdk 31/compileSdk 36/g' "$TELEPHONY_GRADLE"
-          sed -i.bak 's/compileSdk = 31/compileSdk = 36/g' "$TELEPHONY_GRADLE"
-          sed -i.bak 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_11/g' "$TELEPHONY_GRADLE"
+          # Compile SDK 36
+          sed -i.bak \
+            's/compileSdkVersion 31/compileSdkVersion 36/g' \
+            "$TELEPHONY_GRADLE"
+
+          sed -i.bak \
+            's/compileSdk 31/compileSdk 36/g' \
+            "$TELEPHONY_GRADLE"
+
+          sed -i.bak \
+            's/compileSdk = 31/compileSdk = 36/g' \
+            "$TELEPHONY_GRADLE"
+
+          # Java 11
+          sed -i.bak \
+            's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_11/g' \
+            "$TELEPHONY_GRADLE"
+
+          # Remove old Kotlin target
+          sed -i.bak \
+            '/jvmTarget[[:space:]]*=/d' \
+            "$TELEPHONY_GRADLE"
+
+          # Force Java 11 inside Telephony
+          cat >> "$TELEPHONY_GRADLE" <<'EOF'
+
+          android {
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_11
+                  targetCompatibility JavaVersion.VERSION_11
+              }
+          }
+
+          tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+              kotlinOptions {
+                  jvmTarget = "11"
+              }
+          }
+          EOF
+
+          echo "===== TELEPHONY CONFIGURATION ====="
+          tail -40 "$TELEPHONY_GRADLE"
+          echo "==================================="
 
       - name: Add SMS permission
         script: |
+          echo "===== ADDING SMS PERMISSION ====="
+
           MANIFEST="android/app/src/main/AndroidManifest.xml"
 
           if [ ! -f "$MANIFEST" ]; then
@@ -72,6 +116,8 @@ workflows:
               <uses-permission android:name="android.permission.SEND_SMS"/>
             ' "$MANIFEST"
           fi
+
+          grep -n "SEND_SMS" "$MANIFEST" || true
 
       - name: Configure Release Signing
         script: |
@@ -108,7 +154,11 @@ workflows:
               if marker not in s:
                   raise SystemExit("ERROR: buildTypes block not found")
 
-              s = s.replace(marker, signing_block + marker, 1)
+              s = s.replace(
+                  marker,
+                  signing_block + marker,
+                  1
+              )
 
           s = s.replace(
               'signingConfig = signingConfigs.getByName("debug")',
@@ -131,15 +181,36 @@ workflows:
           PY
 
           echo "===== SIGNING CONFIGURATION ====="
-          grep -n "create(\"release\")" android/app/build.gradle.kts || true
-          grep -n "keyAlias" android/app/build.gradle.kts || true
-          grep -n "signingConfig" android/app/build.gradle.kts || true
+
+          grep -n 'create("release")' \
+            android/app/build.gradle.kts || true
+
+          grep -n "keyAlias" \
+            android/app/build.gradle.kts || true
+
+          grep -n "signingConfig" \
+            android/app/build.gradle.kts || true
+
           echo "================================="
 
       - name: Clean Flutter
         script: |
+          echo "===== CLEANING ====="
+
           flutter clean
           flutter pub get
+
+      - name: Verify Telephony JVM Target
+        script: |
+          echo "===== VERIFYING TELEPHONY JVM ====="
+
+          TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
+
+          grep -n "sourceCompatibility" "$TELEPHONY_GRADLE" || true
+          grep -n "targetCompatibility" "$TELEPHONY_GRADLE" || true
+          grep -n "jvmTarget" "$TELEPHONY_GRADLE" || true
+
+          echo "================================="
 
       - name: Build Signed Release APK
         script: |
@@ -154,7 +225,8 @@ workflows:
             exit 1
           fi
 
-          echo "APK CREATED: $APK"
+          echo "===== APK CREATED ====="
+          ls -lh "$APK"
 
           echo "===== VERIFY APK SIGNATURE ====="
 
@@ -165,7 +237,7 @@ workflows:
             exit 1
           fi
 
-          "$APKSIGNER" verify --verbose "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
 
           echo "===== SIGNATURE VERIFICATION COMPLETE ====="
 
