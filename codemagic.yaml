@@ -6,6 +6,9 @@ workflows:
     environment:
       flutter: stable
 
+      android_signing:
+        - jenil-release
+
     scripts:
 
       - name: Get Flutter packages
