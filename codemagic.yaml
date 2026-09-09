@@ -23,16 +23,12 @@ workflows:
           echo "Setting Android Compile SDK..."
 
           if [ -f "android/app/build.gradle.kts" ]; then
-            echo "Found app build.gradle.kts"
-
             sed -i.bak \
               's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' \
               android/app/build.gradle.kts
           fi
 
           if [ -f "android/app/build.gradle" ]; then
-            echo "Found app build.gradle"
-
             sed -i.bak \
               's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' \
               android/app/build.gradle
@@ -94,33 +90,27 @@ workflows:
         script: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
 
-          if [ -f "$MANIFEST" ]; then
-
-            if ! grep -q "android.permission.SEND_SMS" "$MANIFEST"; then
-
-              sed -i.bak '/<manifest/a\
-              <uses-permission android:name="android.permission.SEND_SMS"/>
-              ' "$MANIFEST"
-
-              echo "SEND_SMS permission added."
-
-            else
-              echo "SEND_SMS permission already exists."
-            fi
-
-          else
+          if [ ! -f "$MANIFEST" ]; then
             echo "ERROR: AndroidManifest.xml not found"
             exit 1
           fi
 
+          if ! grep -q "android.permission.SEND_SMS" "$MANIFEST"; then
+            sed -i.bak '/<manifest/a\
+              <uses-permission android:name="android.permission.SEND_SMS"/>
+            ' "$MANIFEST"
+          fi
+
+          echo "SEND_SMS permission checked."
+
       - name: Configure Release Signing
         script: |
-          echo "Configuring Android release signing..."
+          echo "Configuring RELEASE signing..."
 
           APP_GRADLE="android/app/build.gradle.kts"
 
           if [ ! -f "$APP_GRADLE" ]; then
-            echo "ERROR: android/app/build.gradle.kts not found"
+            echo "ERROR: $APP_GRADLE not found"
             exit 1
           fi
 
@@ -130,45 +120,78 @@ workflows:
           p = Path("android/app/build.gradle.kts")
           s = p.read_text()
 
-          signing = '''
+          signing_block = '''
               signingConfigs {
                   create("release") {
                       storeFile = file(System.getenv("CM_KEYSTORE_PATH"))
                       storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
-                      keyAlias = System.getenv("CM_KEY_ALIAS")
+                      keyAlias = "Key0"
                       keyPassword = System.getenv("CM_KEY_PASSWORD")
                   }
               }
 
           '''
 
-          marker = "    buildTypes {"
-
           if 'create("release")' not in s:
+              marker = "    buildTypes {"
+
               if marker not in s:
                   raise SystemExit("ERROR: buildTypes block not found")
 
-              s = s.replace(marker, signing + marker, 1)
+              s = s.replace(
+                  marker,
+                  signing_block + marker,
+                  1
+              )
 
-          s = s.replace(
-              'signingConfig = signingConfigs.getByName("debug")',
-              'signingConfig = signingConfigs.getByName("release")',
-              1
-          )
+          old = 'signingConfig = signingConfigs.getByName("debug")'
+          new = 'signingConfig = signingConfigs.getByName("release")'
+
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              marker = "        release {"
+
+              if marker not in s:
+                  raise SystemExit("ERROR: release block not found")
+
+              s = s.replace(
+                  marker,
+                  marker + '\n            signingConfig = signingConfigs.getByName("release")',
+                  1
+              )
 
           p.write_text(s)
+
+          print("Release signing configured.")
+          print("Keystore alias: Key0")
+          print("Keystore path variable: CM_KEYSTORE_PATH")
           PY
 
-          echo "Release signing configuration added successfully."
+          echo "RELEASE SIGNING CONFIGURATION COMPLETE."
 
       - name: Clean Flutter
         script: |
           flutter clean
           flutter pub get
 
-      - name: Build APK
+      - name: Verify Signing Configuration
+        script: |
+          echo "===== SIGNING CHECK ====="
+
+          grep -n "signingConfigs" android/app/build.gradle.kts || true
+          grep -n "keyAlias" android/app/build.gradle.kts || true
+          grep -n "signingConfig" android/app/build.gradle.kts || true
+
+          echo "========================="
+
+      - name: Build Signed Release APK
         script: |
           flutter build apk --release
+
+          echo "===== APK FILES ====="
+          ls -lh build/app/outputs/flutter-apk/
+          echo "===================="
 
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
