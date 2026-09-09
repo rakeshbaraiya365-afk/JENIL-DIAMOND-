@@ -18,15 +18,19 @@ workflows:
 
       - name: Set Android Compile SDK
         script: |
-          echo "Setting Android Compile SDK to 36"
+          echo "Setting Android Compile SDK..."
 
           if [ -f "android/app/build.gradle.kts" ]; then
+            echo "Found app build.gradle.kts"
+
             sed -i.bak \
               's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' \
               android/app/build.gradle.kts
           fi
 
           if [ -f "android/app/build.gradle" ]; then
+            echo "Found app build.gradle"
+
             sed -i.bak \
               's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' \
               android/app/build.gradle
@@ -36,76 +40,123 @@ workflows:
               android/app/build.gradle
           fi
 
+          echo "Android Compile SDK set."
+
       - name: Fix Telephony Plugin
         script: |
           TELEPHONY_GRADLE="$HOME/.pub-cache/hosted/pub.dev/telephony-0.2.0/android/build.gradle"
 
-          if [ -f "$TELEPHONY_GRADLE" ]; then
-
-            echo "Telephony file found"
-
-            # Namespace
-            if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
-              sed -i.bak '/android {/a\
-                  namespace "com.shounakmulay.telephony"
-              ' "$TELEPHONY_GRADLE"
-            fi
-
-            # Compile SDK 36
-            sed -i.bak \
-              's/compileSdkVersion 31/compileSdkVersion 36/g' \
-              "$TELEPHONY_GRADLE"
-
-            sed -i.bak \
-              's/compileSdk 31/compileSdk 36/g' \
-              "$TELEPHONY_GRADLE"
-
-            sed -i.bak \
-              's/compileSdk = 31/compileSdk = 36/g' \
-              "$TELEPHONY_GRADLE"
-
-            # Java 11
-            if ! grep -q "sourceCompatibility" "$TELEPHONY_GRADLE"; then
-              sed -i.bak '/android {/a\
-                  compileOptions {\
-                      sourceCompatibility JavaVersion.VERSION_11\
-                      targetCompatibility JavaVersion.VERSION_11\
-                  }
-              ' "$TELEPHONY_GRADLE"
-            fi
-
-            # Kotlin 11
-            if ! grep -q "jvmTarget" "$TELEPHONY_GRADLE"; then
-              sed -i.bak '/android {/a\
-                  kotlinOptions {\
-                      jvmTarget = "11"\
-                  }
-              ' "$TELEPHONY_GRADLE"
-            fi
-
-            echo "Telephony fixed: Java 11 + Kotlin 11 + SDK 36"
-
-          else
+          if [ ! -f "$TELEPHONY_GRADLE" ]; then
             echo "ERROR: Telephony Gradle file not found"
             exit 1
           fi
+
+          echo "Telephony Gradle file found:"
+          echo "$TELEPHONY_GRADLE"
+
+          # ------------------------------------------------
+          # 1. Add Android namespace
+          # ------------------------------------------------
+          if ! grep -q "namespace" "$TELEPHONY_GRADLE"; then
+            sed -i.bak '/android {/a\
+                namespace "com.shounakmulay.telephony"
+            ' "$TELEPHONY_GRADLE"
+          fi
+
+          # ------------------------------------------------
+          # 2. Set Telephony Compile SDK to 36
+          # ------------------------------------------------
+          sed -i.bak \
+            's/compileSdkVersion 31/compileSdkVersion 36/g' \
+            "$TELEPHONY_GRADLE"
+
+          sed -i.bak \
+            's/compileSdk 31/compileSdk 36/g' \
+            "$TELEPHONY_GRADLE"
+
+          sed -i.bak \
+            's/compileSdk = 31/compileSdk = 36/g' \
+            "$TELEPHONY_GRADLE"
+
+          # ------------------------------------------------
+          # 3. Java 11
+          # ------------------------------------------------
+          sed -i.bak \
+            's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_11/g' \
+            "$TELEPHONY_GRADLE"
+
+          # ------------------------------------------------
+          # 4. Fix existing Kotlin 1.8 -> Kotlin 11
+          # ------------------------------------------------
+          sed -i.bak -E \
+            "s/jvmTarget[[:space:]]*=[[:space:]]*['\"]1\.8['\"]/jvmTarget = '11'/g" \
+            "$TELEPHONY_GRADLE"
+
+          # ------------------------------------------------
+          # 5. Add Kotlin JVM target 11 if it does not exist
+          # ------------------------------------------------
+          if ! grep -q "jvmTarget.*11" "$TELEPHONY_GRADLE"; then
+
+            cat >> "$TELEPHONY_GRADLE" <<'EOF'
+
+          // JENIL DIAMOND - Fix Kotlin JVM target
+          tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+              kotlinOptions {
+                  jvmTarget = "11"
+              }
+          }
+          EOF
+
+          fi
+
+          echo "----------------------------------------"
+          echo "Telephony final configuration:"
+          echo "----------------------------------------"
+
+          grep -n "namespace" "$TELEPHONY_GRADLE" || true
+          grep -n "compileSdk" "$TELEPHONY_GRADLE" || true
+          grep -n "sourceCompatibility" "$TELEPHONY_GRADLE" || true
+          grep -n "targetCompatibility" "$TELEPHONY_GRADLE" || true
+          grep -n "jvmTarget" "$TELEPHONY_GRADLE" || true
+
+          echo "----------------------------------------"
+          echo "Telephony fix completed."
+          echo "----------------------------------------"
 
       - name: Add SMS permission
         script: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
 
           if [ -f "$MANIFEST" ]; then
+
             if ! grep -q "android.permission.SEND_SMS" "$MANIFEST"; then
+
               sed -i.bak '/<manifest/a\
               <uses-permission android:name="android.permission.SEND_SMS"/>
               ' "$MANIFEST"
+
+              echo "SEND_SMS permission added."
+
+            else
+
+              echo "SEND_SMS permission already exists."
+
             fi
+
+          else
+
+            echo "ERROR: AndroidManifest.xml not found"
+            exit 1
+
           fi
 
-      - name: Build APK
+      - name: Clean Flutter
         script: |
           flutter clean
           flutter pub get
+
+      - name: Build APK
+        script: |
           flutter build apk --debug
 
     artifacts:
